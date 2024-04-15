@@ -30,7 +30,7 @@ def runbot(tokens, bot_ids):
         # get absolute path to python enviroment
         '''import sys
         print(sys.executable)'''
-        subprocess.Popen(["absolute path to python enviroment", "absolute path to telebot.py", 
+        subprocess.Popen(["python", "telebot.py", 
                         "--tokens", tokens, "--bot_ids", bot_ids])
         
 def register_bot(bot_details: BotDetails):
