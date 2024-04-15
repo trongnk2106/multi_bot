@@ -13,6 +13,7 @@ class BotDetails(BaseModel):
     # api_url: str
 
 def runbot(tokens, bot_ids):
+    # check process id, neu process dang chay file telebot.py thi kill nham reload lai cac process
      # Stop the bot.py process if it's already running
     try :
         proc = subprocess.Popen(['wmic', 'process', 'where', 'CommandLine like "%telebot.py%"', 'get', 'ProcessId'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -34,7 +35,7 @@ def runbot(tokens, bot_ids):
                         "--tokens", tokens, "--bot_ids", bot_ids])
         
 def register_bot(bot_details: BotDetails):
-    
+    # write to temp backend file
     with open('./account.txt', 'a+', encoding='utf-8') as f:
         f.write(f"{bot_details.token},{bot_details.bot_id}\n")
     
