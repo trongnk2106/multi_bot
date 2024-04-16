@@ -7,9 +7,9 @@ from telegram import Bot, Update, Poll, InlineKeyboardButton, InlineKeyboardMark
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, Application
 import telegram.ext.filters as flters
 import requests
-import threading
+
 from const import *
-import asyncio
+
 
 def escape_markdown(text):
     escape_chars = '_*[]()~`>#+-=|{}.!'
@@ -31,7 +31,7 @@ class TelegramDAppController:
         # Init conversation
         self.message_init_converstation = "Hello, I'm a FlexStack bot! How can I assist you today?"
         self.suggested_questions = self._get_suggested_questions()
-
+        
         # HANDLE MAPPING
         sugesstion_mapping = {}
         for question in self.suggested_questions:
@@ -85,10 +85,21 @@ class TelegramDAppController:
 
     async def _message_action(self, update: Update, context: CallbackContext):
         # Get message
+        chat_type = update.message.chat.type
         message = update.message.text
-        response = await self._get_response(message)
-        # response = escape_markdown(response)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
+    
+        if chat_type == "private":
+    
+            response = await self._get_response(message)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
+        elif chat_type in ["group", "supergroup"]:
+      
+            self.bot_username = await self.get_bot()
+            print(self.bot_username)
+            if f"@{self.bot_username}" in message:
+                response = await self._get_response(message.replace(f"@{self.bot_username}", ""))
+                await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
+ 
 
     async def callback_query_handler(self, update: Update, context: CallbackContext):
         query = update.callback_query
@@ -103,42 +114,20 @@ class TelegramDAppController:
 
         response_message = f"> You: {selected_question}\n\n{response_message}"
 
-        # response_message = escape_markdown(response_message)
         await context.bot.send_message(chat_id=chat_id, text=response_message, parse_mode="Markdown")
+
+    async def get_bot(self):
+ 
+        bot = Bot(self.token)
+        bot_info = await bot.get_me()
+        bot_username = bot_info.username    
+
+        return bot_username
 
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         # Run Bot
         self.app.run_polling()
-        
-import multiprocessing
+            
 
-def run_bot(token, bot_id):
-    bot = TelegramDAppController(token, bot_id)
-    bot()
-
-if __name__ == '__main__':
-    
-    parser = argparse.ArgumentParser(description='Run TelegramDApp bot.')
-    parser.add_argument('--tokens', nargs='+', help='List of bot tokens', required=True)
-    parser.add_argument('--bot_ids', nargs='+', help='List of bot ids', required=True)
-    args = parser.parse_args()
-    list_tokens = args.tokens[0]
-    list_bot_ids = args.bot_ids[0]
-    print("List of tokens: ", list_tokens)
-    print("List of bot ids: ", list_bot_ids)
-    
-    tokens = list_tokens.split(" ")
-    bot_ids = list_bot_ids.split(" ")
-    
-    processes = []
-    for token, bot_id in zip(tokens, bot_ids):
-        process = multiprocessing.Process(target=run_bot, args=(token, bot_id))
-        process.start()
-        processes.append(process)
-
-
-    for process in processes:
-        process.join()
-        
       

@@ -1,65 +1,61 @@
 import signal
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi import APIRouter
 from pydantic import BaseModel
 import subprocess
 import os
+from multiprocessing import Process
+from telebot import TelegramDAppController
+from typing import Dict
+
 router = APIRouter()
 
 
-class BotDetails(BaseModel):
+from telegram import Bot
+
+class BotConfig(BaseModel):
     token: str
-    bot_id: str
-    # api_url: str
+    bot_id : str
 
-def runbot(tokens, bot_ids):
-    # check process id, neu process dang chay file telebot.py thi kill nham reload lai cac process
-     # Stop the bot.py process if it's already running
-    try :
-        proc = subprocess.Popen(['wmic', 'process', 'where', 'CommandLine like "%telebot.py%"', 'get', 'ProcessId'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        stdout, stderr = proc.communicate()
+running_bots: Dict[str, Process] = {}
 
-        # Duyệt qua tất cả các tiến trình tìm thấy
-        for pid in stdout.decode().split("\n")[1:]:
-            if pid.strip():
-                # Dừng tiến trình bằng cách sử dụng lệnh 'taskkill'
-                subprocess.run(['taskkill', '/PID', pid.strip(), '/F'])
-    except Exception as e:
-        print(e)
-    finally:
-        # get absolute path to python enviroment
-        '''import sys
-        print(sys.executable)'''
-        subprocess.Popen(["python", "telebot.py", 
-                        "--tokens", tokens, "--bot_ids", bot_ids])
-        
-def register_bot(bot_details: BotDetails):
-    # write to temp backend file
-    with open('./account.txt', 'a+', encoding='utf-8') as f:
-        f.write(f"{bot_details.token},{bot_details.bot_id}\n")
-    
-    with open('./account.txt', 'r', encoding='utf-8') as f:
-        content = f.readlines()
-        tokens = []
-        bot_ids = []
-        for line in content:
-            token, bot_id = line.strip().split(',')
-            tokens.append(token)
-            bot_ids.append(bot_id)
-        tokens = " ".join(tokens)
-        bot_ids = " ".join(bot_ids)
-    return tokens, bot_ids
+def run_bot(token, bot_id):
+    bot = TelegramDAppController(token, bot_id)
+    bot()
     
 @router.get("/")
 async def read_root():
     return {"Hello": "World"}
 
-@router.post("/create_bot/")
-async def create_bot(bot_details: BotDetails):
-    tokens, bot_ids = register_bot(bot_details)
-    runbot(tokens, bot_ids)
+@router.post("/start_bot/")
+async def start_bot(config: BotConfig):
+    if config.bot_id in running_bots:
+        raise HTTPException(status_code=400, detail="Bot already running.")
     
-   
+    process = Process(target=run_bot, args=(config.token, config.bot_id))
+    process.start()
+    running_bots[config.bot_id] = process
+
 
     return {"message": "Bot instance created successfully!"}
+
+@router.post("/stop_bot/")
+async def stop_bot(bot_id: str):
+    if bot_id not in running_bots:
+        raise HTTPException(status_code=404, detail="Bot not found.")
+    
+    # Stop the process
+    process = running_bots[bot_id]
+    process.terminate()
+    process.join()
+    del running_bots[bot_id]
+    return {"message": "Bot stopped successfully."}
+
+
+
+
+
+
+
+
