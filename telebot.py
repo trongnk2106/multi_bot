@@ -87,6 +87,8 @@ class TelegramDAppController:
         # Get message
         chat_type = update.message.chat.type
         message = update.message.text
+        self.user_info = update.message.from_user
+        print(self.user_info)
     
         if chat_type == "private":
     
