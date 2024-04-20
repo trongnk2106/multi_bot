@@ -1,5 +1,6 @@
 import argparse
 from dataclasses import dataclass
+import datetime
 from typing import Any
 from telegram.ext import CallbackQueryHandler
 from telegram import Bot, Update, Poll, InlineKeyboardButton, InlineKeyboardMarkup
@@ -7,6 +8,7 @@ from telegram import Bot, Update, Poll, InlineKeyboardButton, InlineKeyboardMark
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, Application
 import telegram.ext.filters as flters
 import requests
+from functools import partial
 
 from const import *
 
@@ -27,7 +29,8 @@ class TelegramDAppController:
         self.bot_id = bot_id
         # Define App
         self.app = Application.builder().token(self.token).build()
-
+        self.chat_id = requests.get(f"https://api.telegram.org/bot{self.token}/getUpdates")
+        print("chat id : ", self.chat_id)
         # Init conversation
         self.message_init_converstation = "Hello, I'm a FlexStack bot! How can I assist you today?"
         self.suggested_questions = self._get_suggested_questions()
@@ -68,6 +71,8 @@ class TelegramDAppController:
     def _handle(self):
         self.app.add_handler(CommandHandler("start", self._start_action))
         self.app.add_handler(CommandHandler("help", self._help_action))
+        self.app.add_handler(CommandHandler("morning_message", self.start_auto_messaging))
+        self.app.add_handler(CommandHandler("stop_morning_message", self.stop_notify))
         self.app.add_handler(MessageHandler(flters.TEXT & ~flters.COMMAND, self._message_action))
         self.app.add_handler(CallbackQueryHandler(self.callback_query_handler))
 
@@ -76,6 +81,7 @@ class TelegramDAppController:
 
         keyboard = [[InlineKeyboardButton(question, callback_data=question)] for question in suggested_questions]
         reply_markup = InlineKeyboardMarkup(keyboard)
+        
 
         # Gửi tin nhắn với Inline Keyboard
         await update.message.reply_text(self.message_init_converstation, reply_markup=reply_markup)
@@ -88,7 +94,7 @@ class TelegramDAppController:
         chat_type = update.message.chat.type
         message = update.message.text
         self.user_info = update.message.from_user
-        print(self.user_info)
+     
     
         if chat_type == "private":
     
@@ -101,7 +107,22 @@ class TelegramDAppController:
             if f"@{self.bot_username}" in message:
                 response = await self._get_response(message.replace(f"@{self.bot_username}", ""))
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
- 
+    
+    @staticmethod
+    async def callback_auto_message(context: CallbackContext, update: Update):
+        await context.bot.send_message(chat_id=update.effective_chat.id, text='Good morning!!', parse_mode="Markdown")
+
+    async def start_auto_messaging(self, update: Update, context: CallbackContext):
+        chat_id = update.message.chat_id
+        job = context.job_queue.run_daily(partial(self.callback_auto_message, update=update), time=datetime.time(hour=21, minute=53), days=(0, 1, 2, 3, 4, 5, 6), chat_id=chat_id, name=str(chat_id))
+        # job = context.job_queue.run_repeating(partial(self.callback_auto_message, update=update), 10, chat_id=chat_id, name=str(chat_id))
+        
+        
+    async def stop_notify(self, update : Update, context : CallbackContext):
+        chat_id = update.message.chat_id
+        await context.bot.send_message(chat_id=chat_id, text='Stopping automatic messages!', parse_mode="Markdown")
+        job = context.job_queue.get_jobs_by_name(str(chat_id))
+        job[0].schedule_removal()
 
     async def callback_query_handler(self, update: Update, context: CallbackContext):
         query = update.callback_query
