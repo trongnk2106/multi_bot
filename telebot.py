@@ -9,7 +9,8 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContex
 import telegram.ext.filters as flters
 import requests
 from functools import partial
-
+from io import BytesIO
+import numpy as np
 from const import *
 
 
@@ -29,8 +30,8 @@ class TelegramDAppController:
         self.bot_id = bot_id
         # Define App
         self.app = Application.builder().token(self.token).build()
-        self.chat_id = requests.get(f"https://api.telegram.org/bot{self.token}/getUpdates")
-        print("chat id : ", self.chat_id)
+        # self.chat_id = requests.get(f"https://api.telegram.org/bot{self.token}/getUpdates")
+        # print("chat id : ", self.chat_id)
         # Init conversation
         self.message_init_converstation = "Hello, I'm a FlexStack bot! How can I assist you today?"
         self.suggested_questions = self._get_suggested_questions()
@@ -74,6 +75,11 @@ class TelegramDAppController:
         self.app.add_handler(CommandHandler("morning_message", self.start_auto_messaging))
         self.app.add_handler(CommandHandler("stop_morning_message", self.stop_notify))
         self.app.add_handler(MessageHandler(flters.TEXT & ~flters.COMMAND, self._message_action))
+        self.app.add_handler(MessageHandler(flters.PHOTO, self._photo))
+        self.app.add_handler(MessageHandler(flters.Document.ALL, self._document))
+        self.app.add_handler(MessageHandler(flters.AUDIO, self._audio))
+        self.app.add_handler(MessageHandler(flters.VOICE, self._voice))
+        self.app.add_handler(MessageHandler(flters.VIDEO, self._video))
         self.app.add_handler(CallbackQueryHandler(self.callback_query_handler))
 
     async def _start_action(self, update: Update, context: CallbackContext):
@@ -94,7 +100,7 @@ class TelegramDAppController:
         chat_type = update.message.chat.type
         message = update.message.text
         self.user_info = update.message.from_user
-     
+        # print(update.message)
     
         if chat_type == "private":
     
@@ -107,6 +113,67 @@ class TelegramDAppController:
             if f"@{self.bot_username}" in message:
                 response = await self._get_response(message.replace(f"@{self.bot_username}", ""))
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
+    
+    async def _photo(self, update : Update ,context: CallbackContext):
+        
+        '''
+        Handler for photo, get photo ID and download it to local
+        '''
+        
+        
+        file = await context.bot.get_file(update.message.photo[-1].file_id)
+        file_bytes = await file.download_as_bytearray()
+    
+        with open('image.jpg', 'wb') as f:
+            f.write(file_bytes)
+    
+    async def _document(self, update : Update ,context: CallbackContext):
+        
+        '''
+        Handler for document, get document ID and download it to local
+        '''
+        
+        file = await context.bot.get_file(update.message.document.file_id)
+        file_bytes = await file.download_as_bytearray()
+    
+        with open('document.pdf', 'wb') as f:
+            f.write(file_bytes)
+    
+    async def _audio(self, update : Update ,context: CallbackContext):
+        
+        '''
+        Handler for audio, get audio ID and download it to local
+        '''
+        
+        file = await context.bot.get_file(update.message.audio.file_id)
+        file_bytes = await file.download_as_bytearray()
+    
+        with open('audio.mp3', 'wb') as f:
+            f.write(file_bytes)
+            
+    
+    async def _voice(self, update : Update ,context: CallbackContext):
+        
+        '''
+        Handler for voice, get voice ID and download it to local
+        '''
+        
+        file = await context.bot.get_file(update.message.voice.file_id)
+        file_bytes = await file.download_as_bytearray()
+    
+        with open('voice.mp3', 'wb') as f:
+            f.write(file_bytes)
+            
+    async def _video(self, update : Update ,context: CallbackContext):
+        
+        #TODO: Handle video
+        
+        print(update.message.video)
+        file = await context.bot.get_file(update.message.video.file_id)
+        file_bytes = await file.download_as_bytearray()
+    
+        with open('video.mp4', 'wb') as f:
+            f.write(file_bytes)
     
     @staticmethod
     async def callback_auto_message(context: CallbackContext, update: Update):
