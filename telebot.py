@@ -227,7 +227,6 @@ class TelegramDAppController:
                 break
         if status :
             res = requests.get(url_download)
-            print(res)
             with open(name_file, "wb") as file:
                 file.write(res.content)
             doc = open(f'{name_file}', 'rb')
