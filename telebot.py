@@ -148,7 +148,7 @@ class TelegramDAppController:
         elif chat_type in ["group", "supergroup"]:
       
             self.bot_username = await self.get_bot()
-            print(self.bot_username)
+   
             if f"@{self.bot_username}" in message:
                 response = await self._get_response(message.replace(f"@{self.bot_username}", ""))
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
@@ -264,9 +264,7 @@ class TelegramDAppController:
     async def _video(self, update : Update ,context: CallbackContext):
         
         #TODO: Handle video
-        print("handle video")
-        
-        print(update.message.video)
+       
         file = await context.bot.get_file(update.message.video.file_id)
         file_bytes = await file.download_as_bytearray()
     
