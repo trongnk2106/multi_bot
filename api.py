@@ -1,6 +1,6 @@
 import signal
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 import subprocess
 import os
@@ -34,7 +34,8 @@ async def start_bot(config: BotConfig):
         raise HTTPException(status_code=400, detail="Bot already running.")
     
     process = Process(target=run_bot, args=(config.token, config.bot_id))
-    process.start()
+    # process.start()
+    background_tasks.add_task(process.start)
     running_bots[config.bot_id] = process
 
 

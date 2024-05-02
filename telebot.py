@@ -1,18 +1,58 @@
 import argparse
 from dataclasses import dataclass
 import datetime
+import time
 from typing import Any
 from telegram.ext import CallbackQueryHandler
 from telegram import Bot, Update, Poll, InlineKeyboardButton, InlineKeyboardMarkup
 
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, Application
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackContext, Application, MessageReactionHandler
+    
 import telegram.ext.filters as flters
 import requests
 from functools import partial
 from io import BytesIO
 import numpy as np
+import shutil
 from const import *
+from openai import OpenAI
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
+
+
+bearer_token  = 'eyJhbGciOiJSUzI1NiIsImtpZCI6ImJhNjI1OTZmNTJmNTJlZDQ0MDQ5Mzk2YmU3ZGYzNGQyYzY0ZjQ1M2UiLCJ0eXAiOiJKV1QifQ.eyJuYW1lIjoiRmxleHN0YWNrIHN5c3RlbSIsInBpY3R1cmUiOiJodHRwczovL2xoMy5nb29nbGV1c2VyY29udGVudC5jb20vYS9BQ2c4b2NLLWZYcFJ2WlU1YjlfdF9nUlUwNHM4ZzlyUTVqUi1mQktDTVZLaVkxTzA9czk2LWMiLCJpc3MiOiJodHRwczovL3NlY3VyZXRva2VuLmdvb2dsZS5jb20vZG9jdHJhbnNsYXRlLWlvIiwiYXVkIjoiZG9jdHJhbnNsYXRlLWlvIiwiYXV0aF90aW1lIjoxNzEyMTMxMzkyLCJ1c2VyX2lkIjoiNmx5NHlmZTZWdFpqM1FHM0kySThFUkx4a3h6MiIsInN1YiI6IjZseTR5ZmU2VnRaajNRRzNJMkk4RVJMeGt4ejIiLCJpYXQiOjE3MTIxMzE4ODgsImV4cCI6MTcxMjEzNTQ4OCwiZW1haWwiOiJzeXN0ZW1AZmxleHN0YWNrLmFpIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImZpcmViYXNlIjp7ImlkZW50aXRpZXMiOnsiZ29vZ2xlLmNvbSI6WyIxMDI2NzQ3MDg4MDk1NTYyODY1MjYiXSwiZW1haWwiOlsic3lzdGVtQGZsZXhzdGFjay5haSJdfSwic2lnbl9pbl9wcm92aWRlciI6Imdvb2dsZS5jb20ifX0.TRX-sKv6qAu_zGtYK4mNz2fufjukDGhvsVtpKyqsAbE4l1wUvE7GZVOGEHwyIQF0RstFpFK64hnhtE9vhYk3NwH50S6CeJTRx031ok1sXqQMBjCapcUTTfMWA5QmDVRUmtyGiTBturDgiKrt7pcSFLtgDxI1KtrWVmqERyw8o2mkmAOjrJQnrvdzc75crLT89_gbFyb-Bf4s9QANciTnYUsdXMAIezxNcMaAj4pDzSsA6q6EJwLJsQpvZBnFCSs6fNObF0d50wmQ61x-VhNHTkE4dCM_bAblxTvfeZmaXFQjQytnmXyJnEW1-oW420sXlj5sbvva6swzXp3kOZXraA'
+headers = {
+    "Authorization": f"Bearer {bearer_token}"
+}
+
+
+def detemine_dest_language(caption):
+   
+    client = OpenAI(
+        # This is the default and can be omitted
+        api_key=os.getenv("OPENAI_API_KEY"),
+    )
+
+    prompt = f'''You are an expert in language analysis. A user has asked you to translate a document. Based on the following statement, identify which language the user wants the document to be translated into:
+
+    "{caption}"
+
+    If they want it translated into Vietnamese, only respond with "vi." 
+    If they want it translated into English, only respond with "en." 
+    If it's another language, only respone the stand for name that language.'''
+
+    chat_completion = client.chat.completions.create(
+        messages=[
+            {
+                "role": "user",
+                "content": f"{prompt}",
+            }
+        ],
+        model="gpt-3.5-turbo",
+    )
+    return str(chat_completion.choices[0].message.content)
 
 def escape_markdown(text):
     escape_chars = '_*[]()~`>#+-=|{}.!'
@@ -30,9 +70,6 @@ class TelegramDAppController:
         self.bot_id = bot_id
         # Define App
         self.app = Application.builder().token(self.token).build()
-        # self.chat_id = requests.get(f"https://api.telegram.org/bot{self.token}/getUpdates")
-        # print("chat id : ", self.chat_id)
-        # Init conversation
         self.message_init_converstation = "Hello, I'm a FlexStack bot! How can I assist you today?"
         self.suggested_questions = self._get_suggested_questions()
         
@@ -80,6 +117,8 @@ class TelegramDAppController:
         self.app.add_handler(MessageHandler(flters.AUDIO, self._audio))
         self.app.add_handler(MessageHandler(flters.VOICE, self._voice))
         self.app.add_handler(MessageHandler(flters.VIDEO, self._video))
+        self.app.add_handler(MessageHandler(flters.ANIMATION, self._animation))
+        self.app.add_handler(MessageReactionHandler(self._reaction))
         self.app.add_handler(CallbackQueryHandler(self.callback_query_handler))
 
     async def _start_action(self, update: Update, context: CallbackContext):
@@ -109,7 +148,7 @@ class TelegramDAppController:
         elif chat_type in ["group", "supergroup"]:
       
             self.bot_username = await self.get_bot()
-            print(self.bot_username)
+   
             if f"@{self.bot_username}" in message:
                 response = await self._get_response(message.replace(f"@{self.bot_username}", ""))
                 await context.bot.send_message(chat_id=update.effective_chat.id, text=response, parse_mode="Markdown")
@@ -119,7 +158,7 @@ class TelegramDAppController:
         '''
         Handler for photo, get photo ID and download it to local
         '''
-        
+        print("handle photo")
         
         file = await context.bot.get_file(update.message.photo[-1].file_id)
         file_bytes = await file.download_as_bytearray()
@@ -127,17 +166,75 @@ class TelegramDAppController:
         with open('image.jpg', 'wb') as f:
             f.write(file_bytes)
     
+    
+    async def _animation(self, update : Update ,context: CallbackContext):
+            
+            '''
+            Handler for animation, get animation ID and download it to local
+            '''
+            print("handle animation")
+            file = await context.bot.get_file(update.message.animation.file_id)
+            file_bytes = await file.download_as_bytearray()
+        
+            with open('animation.gif', 'wb') as f:
+                f.write(file_bytes)
+    
     async def _document(self, update : Update ,context: CallbackContext):
         
         '''
         Handler for document, get document ID and download it to local
         '''
+        dest = detemine_dest_language(update.message.caption)
+        print(dest)
         
         file = await context.bot.get_file(update.message.document.file_id)
+        file_name = update.message.document.file_name
         file_bytes = await file.download_as_bytearray()
+        mime_type = update.message.document.mime_type # application/pdf
+        url = 'https://doctranslate-api.doctranslate.io/v1/translate/document'
+        # with open(f'{file_name}', 'wb') as f:
+        #     f.write(file_bytes)
+        # file = {
+        #     "file": open(f"{file_name}", "rb")
+        # }
+        file = {
+            "file" : file_bytes
+        }
+        
+        data = {
+            "file_type" : mime_type,
+            "dest_lang" : dest
+        }
+        response = requests.post(url, headers=headers, files=file, data = data).json()
+
+        task_id = response['data']['task_id']
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Translating document, please wait...", parse_mode="Markdown")
+        count_time = 0
+        status = False
+        while True:
+            res = requests.get(f"https://doctranslate-api.doctranslate.io/v1/result/{task_id}", headers=headers)
+            time.sleep(2)
+            count_time += 2
+            if count_time > 60:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text="Timeout, please try again", parse_mode="Markdown")
+                status = False 
+                break
+            res = res.json()
+            if "url_download" in res['data'].keys():
+                url_download = res['data']['url_download']
+                name_file = res['data']['name_file']
+                status = True
+                break
+        if status :
+            res = requests.get(url_download)
+            with open(name_file, "wb") as file:
+                file.write(res.content)
+            doc = open(f'{name_file}', 'rb')
     
-        with open('document.pdf', 'wb') as f:
-            f.write(file_bytes)
+            
+            await context.bot.send_document(chat_id = update.effective_chat.id, document = doc)
+        # await context.bot.send_message(chat_id=update.effective_chat.id, text=f"done", parse_mode="Markdown")
+      
     
     async def _audio(self, update : Update ,context: CallbackContext):
         
@@ -167,13 +264,23 @@ class TelegramDAppController:
     async def _video(self, update : Update ,context: CallbackContext):
         
         #TODO: Handle video
-        
-        print(update.message.video)
+       
         file = await context.bot.get_file(update.message.video.file_id)
         file_bytes = await file.download_as_bytearray()
     
         with open('video.mp4', 'wb') as f:
             f.write(file_bytes)
+    
+    async def _reaction(self, update : Update ,context: CallbackContext):
+            
+            '''
+            Handler for reaction, get reaction ID and download it to local
+            '''
+            
+            react = update.message_reaction
+            print(react.user, react.reaction, react.message_id, react.chat_id, react.message)
+            print(react)
+        
     
     @staticmethod
     async def callback_auto_message(context: CallbackContext, update: Update):
